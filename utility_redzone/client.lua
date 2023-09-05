@@ -5,8 +5,12 @@ local options = {
     slice = "ignore"
 }
 
+local ped = PlayerPedId()
+local respawnTimers = {}
+local playerWeapons = {}
+
 Citizen.CreateThread(function()
-    for marker_id,v in pairs(Config.RedZone) do 
+    for marker_id, v in pairs(Config.RedZone) do 
         options.scale = vector3(v.Size, v.Size, 150.0)
 
         CreateMarker(marker_id, v.Coords, v.Size + 50.0, 0.0, options)
@@ -21,12 +25,10 @@ Citizen.CreateThread(function()
     end
 end)
 
-local ped = PlayerPedId()
-
 CreateLoop(function()
     local founded = false
 
-    for marker_id,v in pairs(Config.RedZone) do 
+    for marker_id, v in pairs(Config.RedZone) do 
         if GetDistanceFrom("marker", marker_id) < v.Size/2 then
             ped = PlayerPedId()
 
@@ -51,14 +53,16 @@ CreateLoop(function()
                 else
                     SetPedInfiniteAmmoClip(ped, false)
                 end
-
-                if GetSelectedPedWeapon(ped) ~= v.Weapon then
-                    if HasPedGotWeapon(ped, v.Weapon, false) then
+            
+                local weaponHash = GetHashKey(v.Weapon)
+            
+                if GetSelectedPedWeapon(ped) ~= weaponHash then
+                    if HasPedGotWeapon(ped, weaponHash, false) then
                         ShowNotification(Config.Notify["on_weapon_change"])
-                        SetCurrentPedWeapon(ped, v.Weapon, true)
+                        SetCurrentPedWeapon(ped, weaponHash, true)
                     else
-                        ShowNotification(Config.Notify["no_weapon"])
-                        GiveWeaponToPed(ped, v.Weapon, 250, false, true)
+                       -- ShowNotification(Config.Notify["no_weapon"])
+                        GiveWeaponToPed(ped, weaponHash, 250, false, true)
                     end
                 end
             end
@@ -77,13 +81,64 @@ CreateLoop(function()
                 end
             end
 
+            -- Check if the player is dead and start the respawn timer
+            if IsEntityDead(PlayerPedId()) and not respawnTimers[PlayerId()] then
+                local respawnCoords = v.RespawnPoints[math.random(1, #v.RespawnPoints)]
+                respawnTimers[PlayerId()] = { timer = v.RespawnTimer, spawnCoords = respawnCoords }
+            end
+
+            -- Player is inside the RedZone, remove the weapon tracking entry
+            playerWeapons[PlayerId()] = nil
+
             founded = true
             break
         end
     end
 
     if not founded then
+        -- Player is outside the RedZone
+        local playerId = PlayerId()
+        local ped = PlayerPedId()
+
+        -- Check if the player has a weapon inside the RedZone
+        if playerWeapons[playerId] then
+            local weaponHash = playerWeapons[playerId]
+
+            -- Remove the player's weapon
+            RemoveWeaponFromPed(ped, weaponHash)
+
+            -- Clear the entry in the table
+            playerWeapons[playerId] = nil
+        end
+
+        -- Reset infinite ammo when leaving the RedZone
+        SetPedInfiniteAmmoClip(ped, false)
+
         Citizen.Wait(500)
+    end
+end)
+
+Citizen.CreateThread(function()
+    while true do
+        for playerId, respawnData in pairs(respawnTimers) do
+            if respawnData.timer > 0 then
+                respawnData.timer = respawnData.timer - 1000 
+            else
+                local playerPed = GetPlayerPed(-1)
+                local respawnCoords = respawnData.spawnCoords
+
+                TriggerEvent('hospital:client:Revive', true) 
+                Citizen.Wait(0) 
+
+                SetEntityCoordsNoOffset(playerPed, respawnCoords.x, respawnCoords.y, respawnCoords.z, true, true, true)
+                SetEntityInvincible(playerPed, false)
+
+                -- Clear the respawn timer entry
+                respawnTimers[playerId] = nil 
+            end
+        end
+
+        Citizen.Wait(1000) 
     end
 end)
 
