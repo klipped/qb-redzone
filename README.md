@@ -15,9 +15,14 @@ First i want to give credits to https://github.com/XenoS-ITA he made this script
 
 HOW TO USE
 1. add files in resource folder
+   
 2. utility_lib should be started first, make sure to go into server.cfg and add
+
    
 ensure utility_lib
+
+
 ensure utility_redzone 
+
 
 3. adjust the config to your liking then enjoy.
